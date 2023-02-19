@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, tick } from 'svelte';
+    import { onMount } from 'svelte';
 
     const timeout = async (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -42,22 +42,6 @@
             this.isAlive = true;
             this.style = "opacity: 1; pointer-events: all;";
         }
-        setCount(count: number) {
-            this.count = count
-            if (this.count == 1) {
-                this.fingers = {pinky: false, ring: false, middle: false, index: true, thumb: false};
-            } else if (this.count == 2) {
-                this.fingers = {pinky: false, ring: false, middle: true, index: true, thumb: false};
-            } else if (this.count == 3) {
-                this.fingers = {pinky: false, ring: true, middle: true, index: true, thumb: false};
-            } else if (this.count == 4) {
-                this.fingers = {pinky: true, ring: true, middle: true, index: true, thumb: false};
-            } else if (this.count == 0) {
-                this.isAlive = false
-            } else {this.setCount(this.count - 5)}
-
-            this.generateStyle();
-        }
         generateStyle() {
             if (this.isAlive) {
                 this.style = "opacity: 1; pointer-events: all;";
@@ -71,10 +55,14 @@
         name: string;
         nameVisibility: boolean;
         hands: [Hand, Hand];
+        totalCount: number;
+        canSplit: boolean;
         constructor(newName: string) {
             this.name = newName;
             this.hands = [new Hand(), new Hand()];
             this.nameVisibility = false;
+            this.totalCount = 2;
+            this.canSplit = false;
         }
         isAlive(): boolean {
             let handCount: number = 0
@@ -86,6 +74,43 @@
             if (handCount == 0) {return false}
             else {return true}
         }
+        calculateCount() {
+            this.totalCount = this.hands.reduce((partialSum, a) => partialSum + a.count, 0);
+
+            if (this.totalCount % 2 == 0 && !(this.hands[0].count == this.hands[1].count)){
+                this.canSplit = true;
+            } else {
+                this.canSplit = false;
+            }
+        }
+        setCount(hand: number, count: number) {
+            this.hands[hand].count = count;
+            if (this.hands[hand].count > 0) {
+                this.hands[hand].isAlive = true;
+            } if (this.hands[hand].count == 1) {
+                this.hands[hand].fingers = {pinky: false, ring: false, middle: false, index: true, thumb: false};
+            } else if (this.hands[hand].count == 2) {
+                this.hands[hand].fingers = {pinky: false, ring: false, middle: true, index: true, thumb: false};
+            } else if (this.hands[hand].count == 3) {
+                this.hands[hand].fingers = {pinky: false, ring: true, middle: true, index: true, thumb: false};
+            } else if (this.hands[hand].count == 4) {
+                this.hands[hand].fingers = {pinky: true, ring: true, middle: true, index: true, thumb: false};
+            } else if (this.hands[hand].count == 0) {
+                this.hands[hand].isAlive = false;
+            } else {this.setCount(hand, this.hands[hand].count - 5)}
+
+            this.hands[hand].generateStyle();
+            this.calculateCount();
+        }
+        addCount(hand: number, count: number) {
+            this.setCount(hand, this.hands[hand].count + count)
+        }
+        splitHands(){
+            let value = this.totalCount / 2;
+            for (let hand = 0; hand < 2; hand++){
+                this.setCount(hand, value);
+            }
+        }
     }
 
     class Game {
@@ -94,6 +119,7 @@
         players: Player[];
         uiContainer: UI;
         currentPlayer: number;
+        playersAlive: Player[];
 
         constructor(players: Player[], ui: UI) {
             this.players = players;
@@ -101,6 +127,7 @@
             this.handPressed = false;
             this.uiContainer = ui;
             this.currentPlayer = 0;
+            this.playersAlive = players.slice();
         }
         handHandler(player: number, hand: number) {
             this.handValue = {player: player, hand: hand};
@@ -113,11 +140,14 @@
         }
         hasEnded(): boolean {
             let playersAlive: number = 0;
+            let aliveList: Player[] = [];
             for (let player in this.players) {
                 if (this.players[player].isAlive()){
+                    aliveList.push(this.players[player]);
                     playersAlive += 1;
                 }
             }
+            this.playersAlive = aliveList.slice();
             if (playersAlive == 1) {return true;} 
             else {return false;}
         }
@@ -132,32 +162,18 @@
             while (!validHand){
                 await this.awaitUserChoice();
                 let selectedHand = Object.assign({}, this.handValue);
-                if (condition(selectedHand.player - 1) && this.players[selectedHand.player - 1].hands[selectedHand.hand - 1].isAlive) {
+                if (condition(selectedHand.player - 1) && ((selectedHand.hand == 3) || ( this.players[selectedHand.player - 1].hands[selectedHand.hand - 1].isAlive))) {
                     validHand = true;
                     return selectedHand;
                 } else {
-                    game.uiContainer.subtitle = "Selected hand is not valid"; // WARNING USING EXTERNAL VALUE TO CLASS!!!
+                    this.uiContainer.subtitle = "Selected hand is not valid";
                 }
+                game = game; // WARNING USING EXTERNAL VALUE TO CLASS!!!
             }
         }
     }
 
-    let players: Player[] = [new Player(""), new Player("")];
-    
-    let game: Game = new Game(players, new UI("Enter Player 1's Name", "","Confirm", "Your name"));
-
-    onMount(async () => {
-        game.uiContainer.visibility = {title: true, subtitle: false, textInput: true, button: true};
-        for (let player = 0; player < 2; player++){
-            game.uiContainer.title = "Enter Player " + (player + 1) + "'s Name";
-            await game.uiContainer.waitButtonPress();
-            if (game.uiContainer.inputText == "") {
-                players[player].name = "Player " + (player + 1);
-            } else {
-                players[player].name = game.uiContainer.inputText;
-            }
-            players[player].nameVisibility = true;
-        }
+    async function playGame() {
         game.uiContainer.visibility = {title: false, subtitle: false, textInput: false, button: false}
         while (!game.hasEnded()) {
             game.uiContainer.title = game.players[game.currentPlayer].name + "'s Turn";
@@ -174,49 +190,82 @@
                 }
             });
 
-            game.uiContainer.subtitle = "Select the hand you want to attack";
-            await game.getHandSelect(function(a) {return a != game.currentPlayer}).then((hand) => {
-                if (typeof hand != "undefined") {
-                    handValues.push(hand);
-                } else {
-                    throw("Broken Promises");
-                }
-            });
+            if (handValues[0].hand != 3){
+                game.uiContainer.subtitle = "Select the hand you want to attack";
+                await game.getHandSelect(function(a) {return a != game.currentPlayer}).then((hand) => {
+                    if (typeof hand != "undefined") {
+                        handValues.push(hand);
+                    } else {
+                        throw("Broken Promises");
+                    }
+                });
 
-            game.players[handValues[1].player - 1]
-                .hands[handValues[1].hand - 1]
-                .setCount( 
+                game.players[handValues[1].player - 1]
+                .addCount( (handValues[1].hand - 1), 
                     game.players[handValues[0].player - 1]
                     .hands[handValues[0].hand - 1]
-                    .count + 
-                    game.players[handValues[1].player - 1]
-                    .hands[handValues[1].hand - 1]
                     .count
                 );
+            } else {
+                game.players[handValues[0].player - 1].splitHands()
+            }
+
+            game = game;
             game.nextPlayer();
         }
-    })
-
-    function garbage() {
-        game.players[0].hands[0].setCount(game.players[0].hands[0].count + 1);
     }
+    
+    let game: Game = new Game([new Player(""), new Player("")], new UI("Enter Player 1's Name", "","Confirm", "Your name"));
+
+    onMount(async () => {
+        game.uiContainer.visibility = {title: true, subtitle: false, textInput: true, button: true};
+        for (let player = 0; player < 2; player++){
+            game.uiContainer.title = "Enter Player " + (player + 1) + "'s Name";
+            await game.uiContainer.waitButtonPress();
+            if (game.uiContainer.inputText == "") {
+                game.players[player].name = "Player " + (player + 1);
+            } else {
+                game.players[player].name = game.uiContainer.inputText;
+            }
+            game.players[player].nameVisibility = true;
+        }
+
+        while (true){
+            game.currentPlayer = 0;
+            game.playersAlive = [];
+            for (let player in game.players) {
+                for (let hand = 0; hand < 2; hand++){
+                    game.players[player].setCount(hand, 1);
+                }
+            } 
+            await playGame();
+
+            game.uiContainer.visibility = {title: true, subtitle: false, textInput: false, button: true};
+            game.uiContainer.title = game.playersAlive[0].name.toUpperCase() + " WINS !";
+            game.uiContainer.buttonText = "Play Again";
+            await game.uiContainer.waitButtonPress();     
+        } 
+    })
 </script>
 
 <section>
-    <h1>PolyDactyly</h1>
+    <!-- svelte-ignore a11y-invalid-attribute -->
+    <a href="javascript:window.location.href=window.location.href" style="all: unset; cursor: pointer;"><h1>PolyDactyly</h1></a>
     {#each [1, 2] as player}
     <div id="player-{player}">
         {#each [1, 2] as hand}
         <div class="hand" id="hand-{player}-{hand}" on:click={() => {game.handHandler(player,hand)}} on:keypress={() => {game.handHandler(player,hand)}}
-        style="{players[player - 1].hands[hand - 1].style}">
+        style="{game.players[player - 1].hands[hand - 1].style}">
             <img src="hand.svg" alt="Hand">
             {#each fingerNames as finger}
-                <button class="finger {finger}" style="opacity: {+ !players[player - 1].hands[hand - 1].fingers[finger]}" disabled></button>
+                <button class="finger {finger}" style="opacity: {+ !game.players[player - 1].hands[hand - 1].fingers[finger]}" disabled></button>
             {/each}
         </div>
         {/each}
-        {#if players[player - 1].nameVisibility}
-            <h2 class="player-name" id="name-{player}">{players[player - 1].name}</h2>
+        <button class="player-button player-{player}" id="button-{player}" disabled ="{!game.players[player - 1].canSplit}"
+        on:click={() => {game.handHandler(player,3)}}>Split Hands</button>
+        {#if game.players[player - 1].nameVisibility}
+            <h2 class="player-name player-{player}" id="name-{player}">{game.players[player - 1].name}</h2>
         {/if}
     </div>
     {/each}
@@ -234,7 +283,6 @@
         {#if game.uiContainer.visibility.button}
             <button id="confirm-button" on:click={() => {game.uiContainer.buttonHandler()}}>{game.uiContainer.buttonText}</button>
         {/if}
-        <!-- <button on:click={() => {garbage()}}>HAAH GARBAGE</button> -->
     </div>
 </section>
 
@@ -258,23 +306,58 @@
         translate: 0 -50% 0;
     }
 
-    #name-1{
+    .player-button {
+        font-family: 'Rubik', sans-serif;
+        letter-spacing: 0.1vw;
+        font-size: 1.25em;
+        position: absolute;
+        text-align: center;
+        top: 56vh;
+        translate: 0 -50% 0;
+        padding: 0.4%;
+        border: 3px solid;
+        background-color: white;
+        border-radius: 8px;
+        z-index: 5;
+        pointer-events: all;
+        cursor: pointer;
+    }
+
+    .player-button:disabled {
+        color: #616161 !important;
+        border-color: #616161 !important;
+    }
+
+    #button-1 {
+        left: 15vw;
+    }
+
+    .player-1{
         color: #ef4143;
+        border-color: #ef4143;
+    }
+
+    .player-2 {
+        color: #4191ef;
+        border-color: #4191ef;
+    }
+
+    #button-2 {
+        right: 15vw;
     }
 
     #name-2 {
         right: 0;
-        color: #4191ef;
     }
 
     .hand {
         width: 50vmin;
         height: 39vh;
         position: absolute;
-        pointer-events: none;
         pointer-events: all;
         cursor: pointer;
-        z-index: 5;
+        z-index: 3;
+        transition-property: opacity;
         transition: 1s;
     }    
 
@@ -310,8 +393,9 @@
         opacity: 1;
         border-right: 4px solid;
         border-color: inherit;
-        pointer-events: inherit;
+        pointer-events: none;
         cursor: inherit;
+        transition-property: opacity;
         transition: 1s;
     }
 
