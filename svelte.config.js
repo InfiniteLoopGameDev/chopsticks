@@ -15,6 +15,9 @@ export default {
       fallback: null,
       precompress: false,
       strict: true
-    })
+    }),
+    paths: {
+			base: '/projects/chopsticks'
+		}
   }
 };

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
+    import { base } from '$app/paths';
 
     const timeout = async (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -256,7 +257,7 @@
         {#each [1, 2] as hand}
         <div class="hand" id="hand-{player}-{hand}" on:click={() => {game.handHandler(player,hand)}} on:keypress={() => {game.handHandler(player,hand)}}
         style="{game.players[player - 1].hands[hand - 1].style}">
-            <img src="hand.svg" alt="Hand">
+            <img src="{base}/hand.svg" alt="Hand">
             {#each fingerNames as finger}
                 <button class="finger {finger}" style="opacity: {+ !game.players[player - 1].hands[hand - 1].fingers[finger]}" disabled></button>
             {/each}
