@@ -250,7 +250,7 @@
 
 <section>
     <!-- svelte-ignore a11y-invalid-attribute -->
-    <a href="javascript:window.location.href=window.location.href" style="all: unset; cursor: pointer;"><h1>PolyDactyly</h1></a>
+    <a href="javascript:window.location.href=window.location.href" style="all: unset; cursor: pointer;"><h1>Chopsticks</h1></a>
     {#each [1, 2] as player}
     <div id="player-{player}">
         {#each [1, 2] as hand}
